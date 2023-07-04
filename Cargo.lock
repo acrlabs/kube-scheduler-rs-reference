@@ -940,8 +940,10 @@ version = "0.1.0"
 dependencies = [
  "backoff",
  "futures",
+ "hyper",
  "k8s-openapi",
  "kube",
+ "rand",
  "thiserror",
  "tokio",
  "tracing",
