@@ -3,7 +3,7 @@ mod util;
 use futures::{future, StreamExt};
 use hyper::{Body, Request};
 use k8s_openapi::{
-    api::core::v1::{Binding, Node, ObjectReference, Pod},
+    api::core::v1::{Binding, Node, NodeStatus, ObjectReference, Pod, PodSpec},
     apimachinery::pkg::api::resource::Quantity,
     apimachinery::pkg::apis::meta::v1::ObjectMeta,
     CreateOptional,
@@ -50,11 +50,13 @@ async fn can_pod_fit(pod: &Pod, node: &Node, ctx: &Context) -> bool {
 
     let mut available_cpu: ParsedQuantity = "0".try_into().unwrap();
     let mut available_memory: ParsedQuantity = "0".try_into().unwrap();
-    if let Some(status) = &node.status {
-        if let Some(allocatable) = &status.allocatable {
-            available_cpu = allocatable["cpu"].clone().try_into().unwrap();
-            available_memory = allocatable["memory"].clone().try_into().unwrap();
-        }
+    if let Some(NodeStatus {
+        allocatable: Some(allocatable),
+        ..
+    }) = &node.status
+    {
+        available_cpu = allocatable["cpu"].clone().try_into().unwrap();
+        available_memory = allocatable["memory"].clone().try_into().unwrap();
     }
 
     let pods_on_node = pod_querier.list(&list_params).await;
@@ -67,11 +69,29 @@ async fn can_pod_fit(pod: &Pod, node: &Node, ctx: &Context) -> bool {
 
     let pod_requests = util::total_pod_resources(pod);
 
-    return pod_requests["cpu"] <= available_cpu && pod_requests["memory"] <= available_memory;
+    pod_requests["cpu"] <= available_cpu && pod_requests["memory"] <= available_memory
 }
 
 fn does_node_selector_match(pod: &Pod, node: &Node) -> bool {
-    return true;
+    let mut matches = true;
+    if let Some(PodSpec {
+        node_selector: Some(node_selector),
+        ..
+    }) = &pod.spec
+    {
+        for (pk, pv) in node_selector.iter() {
+            if let Some(labels) = &node.metadata.labels {
+                if labels.get(pk) != Some(pv) {
+                    matches = false;
+                    break;
+                }
+            } else {
+                matches = false;
+                break;
+            }
+        }
+    }
+    matches
 }
 
 async fn check_node_validity(
