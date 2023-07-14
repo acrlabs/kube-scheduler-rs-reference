@@ -1,6 +1,11 @@
-use k8s_openapi::api::core::v1::{Container, Pod, ResourceRequirements};
-use kube_quantity::ParsedQuantity;
 use std::collections::BTreeMap;
+
+use k8s_openapi::api::core::v1::{
+    Container,
+    Pod,
+    ResourceRequirements,
+};
+use kube_quantity::ParsedQuantity;
 
 pub fn total_pod_resources(pod: &Pod) -> BTreeMap<&str, ParsedQuantity> {
     let mut resource_map = BTreeMap::new();
@@ -10,11 +15,7 @@ pub fn total_pod_resources(pod: &Pod) -> BTreeMap<&str, ParsedQuantity> {
     if let Some(spec) = &pod.spec {
         for c in &spec.containers {
             if let Container {
-                resources:
-                    Some(ResourceRequirements {
-                        requests: Some(requests),
-                        ..
-                    }),
+                resources: Some(ResourceRequirements { requests: Some(requests), .. }),
                 ..
             } = c
             {

@@ -1,23 +1,46 @@
 mod util;
 
-use futures::{future, StreamExt};
-use hyper::{Body, Request};
-use k8s_openapi::{
-    api::core::v1::{Binding, Node, NodeStatus, ObjectReference, Pod, PodSpec},
-    apimachinery::pkg::api::resource::Quantity,
-    apimachinery::pkg::apis::meta::v1::ObjectMeta,
-    CreateOptional,
+use std::sync::Arc;
+
+use futures::{
+    future,
+    StreamExt,
+};
+use hyper::{
+    Body,
+    Request,
+};
+use k8s_openapi::api::core::v1::{
+    Binding,
+    Node,
+    NodeStatus,
+    ObjectReference,
+    Pod,
+    PodSpec,
+};
+use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
+use k8s_openapi::CreateOptional;
+use kube::api::ListParams;
+use kube::runtime::controller::{
+    Action,
+    Controller,
+};
+use kube::runtime::reflector::{
+    reflector,
+    store,
+    Store,
+};
+use kube::runtime::{
+    watcher,
+    WatchStreamExt,
 };
 use kube::{
-    api::ListParams,
-    runtime::controller::{Action, Controller},
-    runtime::reflector::Store,
-    runtime::{reflector, watcher, WatchStreamExt},
-    Api, Client, ResourceExt,
+    Api,
+    Client,
+    ResourceExt,
 };
 use kube_quantity::ParsedQuantity;
 use rand::seq::SliceRandom;
-use std::sync::Arc;
 use thiserror::Error;
 use tokio::time::Duration;
 use tracing::*;
@@ -50,11 +73,7 @@ async fn can_pod_fit(pod: &Pod, node: &Node, ctx: &Context) -> bool {
 
     let mut available_cpu: ParsedQuantity = "0".try_into().unwrap();
     let mut available_memory: ParsedQuantity = "0".try_into().unwrap();
-    if let Some(NodeStatus {
-        allocatable: Some(allocatable),
-        ..
-    }) = &node.status
-    {
+    if let Some(NodeStatus { allocatable: Some(allocatable), .. }) = &node.status {
         available_cpu = allocatable["cpu"].clone().try_into().unwrap();
         available_memory = allocatable["memory"].clone().try_into().unwrap();
     }
@@ -74,11 +93,7 @@ async fn can_pod_fit(pod: &Pod, node: &Node, ctx: &Context) -> bool {
 
 fn does_node_selector_match(pod: &Pod, node: &Node) -> bool {
     let mut matches = true;
-    if let Some(PodSpec {
-        node_selector: Some(node_selector),
-        ..
-    }) = &pod.spec
-    {
+    if let Some(PodSpec { node_selector: Some(node_selector), .. }) = &pod.spec {
         for (pk, pv) in node_selector.iter() {
             if let Some(labels) = &node.metadata.labels {
                 if labels.get(pk) != Some(pv) {
@@ -94,11 +109,7 @@ fn does_node_selector_match(pod: &Pod, node: &Node) -> bool {
     matches
 }
 
-async fn check_node_validity(
-    pod: &Pod,
-    node: &Node,
-    ctx: &Context,
-) -> Result<(), InvalidNodeReason> {
+async fn check_node_validity(pod: &Pod, node: &Node, ctx: &Context) -> Result<(), InvalidNodeReason> {
     if !can_pod_fit(pod, node, ctx).await {
         return Err(InvalidNodeReason::NotEnoughResources);
     }
@@ -171,22 +182,12 @@ async fn reconcile(pod: Arc<Pod>, ctx: Arc<Context>) -> Result<Action> {
         pod_meta.name = Some(pod_name.clone());
         pod_meta.namespace = Some(pod_namespace.clone());
 
-        let binding = Binding {
-            metadata: pod_meta,
-            target: chosen_node_ref,
-        };
+        let binding = Binding { metadata: pod_meta, target: chosen_node_ref };
 
-        info!(
-            "Binding pod {}/{} to {}: {:?}",
-            pod_name, pod_namespace, node_name, binding,
-        );
-        let (req, resp_body) = Binding::create_pod(
-            pod_name.as_str(),
-            pod_namespace.as_str(),
-            &binding,
-            CreateOptional::default(),
-        )
-        .unwrap();
+        info!("Binding pod {}/{} to {}: {:?}", pod_name, pod_namespace, node_name, binding,);
+        let (req, resp_body) =
+            Binding::create_pod(pod_name.as_str(), pod_namespace.as_str(), &binding, CreateOptional::default())
+                .unwrap();
 
         let (parts, bytes) = req.into_parts();
         let req_body = Request::from_parts(parts, Body::from(bytes));
@@ -203,13 +204,11 @@ fn error_policy(pod: Arc<Pod>, error: &MyError, ctx: Arc<Context>) -> Action {
 #[tokio::main]
 async fn main() -> Result<()> {
     tracing_subscriber::fmt().with_max_level(Level::INFO).init();
-    let client = Client::try_default()
-        .await
-        .expect("failed to create kube client");
+    let client = Client::try_default().await.expect("failed to create kube client");
     let pods: Api<Pod> = Api::all(client.clone());
 
     let nodes: Api<Node> = Api::all(client.clone());
-    let (node_store, node_writer) = reflector::store();
+    let (node_store, node_writer) = store();
     let watch = reflector(node_writer, watcher(nodes, Default::default()))
         .backoff(backoff::ExponentialBackoff::default())
         .touched_objects()
@@ -218,14 +217,7 @@ async fn main() -> Result<()> {
 
     let watch_pending_pods = watcher::Config::default().fields("status.phase=Pending");
     let ctrl = Controller::new(pods, watch_pending_pods)
-        .run(
-            reconcile,
-            error_policy,
-            Arc::new(Context {
-                client: client.clone(),
-                node_store,
-            }),
-        )
+        .run(reconcile, error_policy, Arc::new(Context { client: client.clone(), node_store }))
         .for_each(|_| future::ready(()));
 
     tokio::select!(
