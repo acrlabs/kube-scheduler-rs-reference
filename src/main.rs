@@ -10,7 +10,6 @@ use futures::{
     StreamExt,
 };
 use hyper::{
-    body,
     Body,
     Request,
 };

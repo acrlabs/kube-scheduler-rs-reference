@@ -73,3 +73,6 @@ pub async fn check_node_validity(
 
     return Ok(());
 }
+
+#[cfg(test)]
+mod test;
