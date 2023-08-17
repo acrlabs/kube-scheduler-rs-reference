@@ -19,8 +19,10 @@ pub enum InvalidNodeReason {
 
 async fn can_pod_fit(pod: &corev1::Pod, node: &corev1::Node, ctx: &Context) -> bool {
     let pod_querier: Api<corev1::Pod> = Api::all(ctx.client.clone());
-    let mut list_params = ListParams::default();
-    list_params.field_selector = Some(format!("spec.nodeName={}", node.name_any()));
+    let list_params = ListParams {
+        field_selector: Some(format!("spec.nodeName={}", node.name_any())),
+        ..ListParams::default()
+    };
 
     let mut available_resources = PodResources::new();
     if let Some(corev1::NodeStatus { allocatable: Some(allocatable), .. }) = &node.status {

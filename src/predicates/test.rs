@@ -39,7 +39,6 @@ fn test_node() -> corev1::Node {
     return node;
 }
 
-
 #[rstest]
 fn test_does_node_selector_match_no_selector(test_pod: corev1::Pod, test_node: corev1::Node) {
     assert_eq!(does_node_selector_match(&test_pod, &test_node), true);

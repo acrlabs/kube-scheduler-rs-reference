@@ -29,7 +29,10 @@ have a kubeconfig in a standard location with cluster admin privileges.
 
 To run the tests: `cargo test`.  Note that we have laughably low test coverage.
 
+We do use `pre-commit` in this repo to check formatting and linting.  Install
+[pre-commit](https://pre-commit.com/#plugins) here, and then run `pre-commit install` to configure the hooks.
+
 ## Contributing
 
 I don't really expect to do any more on this project, but if you want to extend it, or you find things that I've done
-that could be better, I'll happily accept PRs. 
+that could be better, I'll happily accept PRs.

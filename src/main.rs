@@ -1,3 +1,5 @@
+#![allow(clippy::needless_return)]
+
 mod error;
 mod predicates;
 mod util;
@@ -78,8 +80,10 @@ async fn reconcile(pod: Arc<corev1::Pod>, ctx: Arc<Context>) -> ReconcileResult<
         let pod_namespace = pod.namespace().unwrap(); // pods always have a namespace
         let node_name = chosen_node.name_any().clone();
 
-        let mut chosen_node_ref = corev1::ObjectReference::default();
-        chosen_node_ref.name = Some(node_name.clone());
+        let chosen_node_ref = corev1::ObjectReference {
+            name: Some(node_name.clone()),
+            ..corev1::ObjectReference::default()
+        };
 
         let binding = corev1::Binding {
             metadata: pod.metadata.clone(),
